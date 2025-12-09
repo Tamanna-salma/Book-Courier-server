@@ -33,7 +33,9 @@ async function run() {
     await client.connect();
     const db=client.db('book_courier_db');
     const userscollection=db.collection('users');
-   
+    const bookscollection=db.collection('Books');
+
+  //  usersApi
     app.post('/users', async (req, res) => {
       const newUser = req.body;
       const email = req.body.email;
@@ -49,6 +51,15 @@ async function run() {
 
     })
 
+//latest Books
+
+app.get('/recentBooks',async(req,res)=>{
+  const cursor=bookscollection.find()
+  .project({review:0,yearOfPublishing:0,totalPages:0,publisher:0})
+  .sort({price:-1}).limit(6)
+const result=await cursor.toArray();
+res.send(result);
+})
 
 
 
