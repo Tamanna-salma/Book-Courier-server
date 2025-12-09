@@ -61,6 +61,32 @@ const result=await cursor.toArray();
 res.send(result);
 })
 
+//  all books data get**
+
+app.get('/Books', async (req, res) => {
+      const { bookName} = req.query
+      let query = {}
+      if (bookName) {
+        query.bookName = {
+          $regex: bookName,
+          $options: 'i'
+        };
+      }
+      const cursor = bookscollection.find(query).sort({ created_at: -1 })
+      const result = await cursor.toArray();
+      res.send(result)
+    });
+
+    
+    //  get single data
+
+    app.get('/Books/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await bookscollection.findOne(query)
+      res.send(result)
+    });
+
 
 
     await client.db("admin").command({ ping: 1 });
