@@ -34,6 +34,7 @@ async function run() {
     const db=client.db('book_courier_db');
     const userscollection=db.collection('users');
     const bookscollection=db.collection('Books');
+    const ordersCollection=db.collection('orders');
 
   //  usersApi
     app.post('/users', async (req, res) => {
@@ -96,6 +97,67 @@ app.get('/Books', async (req, res) => {
       res.send(result)
     })
 
+        // data post**
+
+ app.post('/Books', async (req, res) => {
+      const newbookData = req.body;
+      const { bookName, image,
+        rating,
+        email,
+        author,
+        review,
+        publisher,
+        totalPages,
+        yearOfPublishing,
+       category,tags,price
+       } = newbookData
+      
+      const created_at = new Date()
+      const newbook = {
+       bookName, image,
+        rating,
+        email,
+        author,
+         review,
+        publisher,
+        totalPages,
+        yearOfPublishing,
+       category,tags,price,
+        created_at
+      }
+      const result = await bookscollection.insertOne(newbook);
+      res.send(result);
+    });
+
+    // order-Modal api**
+
+    app.post("/orders", async (req, res) => {
+  const orderData = req.body;
+  const result = await ordersCollection.insertOne(orderData);
+  res.send(result);
+});
+
+//delate orders
+app.delete('/orders/:id', async (req, res) => {
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id) }
+  const result = await ordersCollection.deleteOne(query) ;
+  res.send(result);
+});
+
+// patch orders
+app.patch('/orders/:id', async (req, res) => {
+  const id = req.params.id;
+  const { status, paymentStatus } = req.body;
+  const result = await ordersCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { status, paymentStatus } }
+  );
+  res.send(result);
+});
+
+
+      
 
 
     await client.db("admin").command({ ping: 1 });
