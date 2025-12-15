@@ -2,6 +2,7 @@ require('dotenv').config()
 const express = require('express');
 const cors = require('cors');
 
+    //  mongodb***
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 3000;
@@ -12,7 +13,7 @@ app.use(express.json())
 
 const uri = `mongodb+srv://${process.env.DB_user}:${process.env.DB_pass}@cluster0.nlnjuiz.mongodb.net/?appName=Cluster0`;
 
-
+// mongodb**
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -129,13 +130,66 @@ app.get('/Books', async (req, res) => {
       res.send(result);
     });
 
-    // order-Modal api**
+     // edit data**
+    app.patch('/Books/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updatedbook = req.body; 
 
-    app.post("/orders", async (req, res) => {
+    const query = { _id: new ObjectId(id) };
+
+    const update = {
+      $set: {
+        ...(updatedbook. bookName && {  bookName: updatedbook. bookName }),
+        ...(updatedbook.category && { category: updatedbook.category }),
+        ...(updatedbook.rating && { rating: updatedbook.rating }),
+        ...(updatedbook.price && { price: updatedbook.price }),
+        updated_at: new Date(),
+      },
+    };
+ const result = await bookscollection.updateOne(query, update);
+    res.send(result);
+  } catch (error) {
+    console.error('Error updating book:', error);
+    res.status(500).send({ error: 'Failed to update book' });
+  }
+});
+
+
+
+    // orders api**
+app.get('/orders',async(req,res)=>{
+ try{
+   const query={}
+ const { email } = req.query;
+   if (email) {
+        query.senderEmail = email;
+      }
+      const options = { sort: { createdAt: -1 } };
+
+  const cursor=ordersCollection.find(query,options)
+  const result=await cursor.toArray();
+  res.send(result);
+ }
+ catch (error) {
+    console.error("Error fetching orders:", error);
+    res.status(500).send({ message: "Failed to fetch orders" });
+  }
+
+})
+
+
+
+// orders post api**
+   app.post("/orders", async (req, res) => {
   const orderData = req.body;
+
+  orderData.createdAt = new Date();
+
   const result = await ordersCollection.insertOne(orderData);
   res.send(result);
 });
+
 
 //delate orders
 app.delete('/orders/:id', async (req, res) => {
