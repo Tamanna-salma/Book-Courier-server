@@ -75,11 +75,14 @@ async function run() {
 //latest Books
 
 app.get('/recentBooks',async(req,res)=>{
-  const cursor=bookscollection.find()
-  .project({review:0,yearOfPublishing:0,totalPages:0,publisher:0})
-  .sort({price:-1}).limit(6)
-const result=await cursor.toArray();
-res.send(result);
+ 
+  const publish = "published";
+      const result = await bookscollection
+        .find({ status: publish })
+        .sort({ create_date: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);;
 })
 
 //  all books data get**
@@ -97,8 +100,44 @@ app.get('/Books', async (req, res) => {
       const result = await cursor.toArray();
       res.send(result)
     });
+// search & sort
+    app.get("/Books", async (req, res) => {
+     const publish = "published";
+      const search = req.query.search || "";
+      const sort = req.query.sort || "";
 
-    
+      let filter = {
+        status: publish,
+      };
+
+      if (search) {
+        filter.bookTitle = { $regex: search, $options: "i" };
+      }
+//sort
+      let sortOption = {};
+      if (sort === "low-high") {
+        sortOption = { price: 1 };
+      } else if (sort === "high-low") {
+        sortOption = { price: -1 };
+      } else {
+        sortOption = { create_date: -1 };
+      }
+      const result = await bookCollection
+        .find(filter)
+        .sort(sortOption)
+        .toArray();
+
+      res.send(result);
+    });
+
+    app.get("/mange-books", verifyJWT, verifyADMIN, async (req, res) => {
+      const result = await bookscollection
+        .find()
+        .sort({ create_date: -1 })
+        .toArray();
+      res.send(result); 
+});
+
     //  get single data
 
     app.get('/Books/:id', async (req, res) => {
