@@ -40,18 +40,37 @@ async function run() {
   //  usersApi
     app.post('/users', async (req, res) => {
       const newUser = req.body;
-      const email = req.body.email;
-      const query = { email: email }
+       newUser.create_date = new Date();
+        newUser.last_loggedIn = new Date();
+         newUser.role = "customer";
+      const query = { email: newUser.email };
+    
       const existinguser = await userscollection.findOne(query);
       if (existinguser) {
-        res.send({ massage: 'user already exits.' })
+        const updateUser = await userscollection.updateOne(query, {
+          $set: { last_loggedIn: new Date() },
+        });
+               return res.send(updateUser);
       }
       else {
         const result = await userscollection.insertOne(newUser);
         res.send(result);
       }
+     });
 
-    })
+      //User Role 
+    app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
+      const email = req.body.email;
+      const query = { email: email };
+      const roleUpdate = req.body;
+      const updateinfo = {
+        $set: {
+          role: roleUpdate.role,
+        },
+      };
+      const result = await userscollection.updateOne(query, updateinfo);
+      res.send(result);
+    });
 
 //latest Books
 
@@ -163,7 +182,7 @@ app.get('/orders',async(req,res)=>{
    const query={}
  const { email } = req.query;
    if (email) {
-        query.senderEmail = email;
+        query.userEmail = email;
       }
       const options = { sort: { createdAt: -1 } };
 
@@ -178,7 +197,14 @@ app.get('/orders',async(req,res)=>{
 
 })
 
+ // singleorders data get**
 
+    app.get('/orders/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await ordersCollection.findOne(query);
+      res.send(result);
+    })
 
 // orders post api**
    app.post("/orders", async (req, res) => {
