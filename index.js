@@ -134,7 +134,7 @@ async function run() {
       res.send(result);
     });
     //manage-book get api(admin)
-    app.get("/mange-books", verifyJWT, verifyADMIN, async (req, res) => {
+    app.get("/manage-books", verifyJWT, verifyADMIN, async (req, res) => {
       const result = await bookscollection
         .find()
         .sort({ create_date: -1 })
@@ -200,7 +200,18 @@ async function run() {
       const result = await bookscollection.updateOne(query, updateDoc);
       res.send(result);
     }); 
-
+ // publish and unpublish //
+    app.patch("/books/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const update = {
+        $set: {
+          status: req.body.status,
+        },
+      };
+      const result = await bookscollection.updateOne(query, update);
+      res.send(result);
+    });
 
     // orders api**
     app.get('/orders', async (req, res) => {
