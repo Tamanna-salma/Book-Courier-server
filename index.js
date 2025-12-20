@@ -91,7 +91,7 @@ async function run() {
 
     //  all books data get**
 
-    app.get('/Books', async (req, res) => {
+    app.get('/books', async (req, res) => {
       const { bookName } = req.query
       let query = {}
       if (bookName) {
@@ -105,7 +105,7 @@ async function run() {
       res.send(result)
     });
     // all books search & sort
-    app.get("/Books", async (req, res) => {
+    app.get("/books", async (req, res) => {
       const publish = "published";
       const search = req.query.search || "";
       const sort = req.query.sort || "";
@@ -141,7 +141,7 @@ async function run() {
         .toArray();
       res.send(result);
     });
-    //manage-book get api(Librarian)
+    //my-book get api(Librarian)
     app.get("/my-books/:email", verifyJWT, verifyLibrarian, async (req, res) => {
       const email = req.params.email;
       const result = await bookscollection
@@ -153,7 +153,7 @@ async function run() {
 
     //  get single data
 
-    app.get('/Books/:id', async (req, res) => {
+    app.get('/books/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
       const result = await bookscollection.findOne(query)
@@ -162,9 +162,14 @@ async function run() {
 
     // delete**
 
-    app.delete('/Books/:id', async (req, res) => {
+    app.delete('/books/:id',verifyJWT, verifyLibrarian, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
+      const existingData = await bookscollection.findOne(query);
+      if (existingData.status === "published") {
+        return res.send({ message: "book is published not delete" });
+      }
+
       const result = await bookscollection.deleteOne(query);
       res.send(result)
     });
@@ -178,37 +183,23 @@ async function run() {
 
     // data post**
 
-    app.post('/Books', verifyJWT, verifyLibrarian, async (req, res) => {
-      const newbook = req.body;
+    app.post('/books', verifyJWT, verifyLibrarian, async (req, res) => {
+      const newBook = req.body;
+       newBook.create_date = new Date();
         const result = await bookscollection.insertOne(newbook);
       res.send(result);
     });
 
     // edit data**
-    app.patch('/Books/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const updatedbook = req.body;
-
-        const query = { _id: new ObjectId(id) };
-
-        const update = {
-          $set: {
-            ...(updatedbook.bookName && { bookName: updatedbook.bookName }),
-            ...(updatedbook.category && { category: updatedbook.category }),
-            ...(updatedbook.rating && { rating: updatedbook.rating }),
-            ...(updatedbook.price && { price: updatedbook.price }),
-            updated_at: new Date(),
-          },
-        };
-        const result = await bookscollection.updateOne(query, update);
-        res.send(result);
-      } catch (error) {
-        console.error('Error updating book:', error);
-        res.status(500).send({ error: 'Failed to update book' });
-      }
-    });
-
+    
+    app.put("/books/:id", verifyJWT, verifyLibrarian, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const updateBook = req.body;
+      const updateDoc = { $set: updateBook };
+      const result = await bookscollection.updateOne(query, updateDoc);
+      res.send(result);
+    }); 
 
 
     // orders api**
