@@ -2,7 +2,7 @@ require('dotenv').config()
 const express = require('express');
 const cors = require('cors');
 
-    //  mongodb***
+//  mongodb***
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 3000;
@@ -30,35 +30,39 @@ app.get('/', (req, res) => {
 
 async function run() {
   try {
-    
-    await client.connect();
-    const db=client.db('book_courier_db');
-    const userscollection=db.collection('users');
-    const bookscollection=db.collection('Books');
-    const ordersCollection=db.collection('orders');
 
-  //  usersApi
+    await client.connect();
+    const db = client.db('book_courier_db');
+    const userscollection = db.collection('users');
+    const bookscollection = db.collection('Books');
+    const ordersCollection = db.collection('orders');
+    // const paymentCollection = db.collection("payments");
+    // const wishlistCollection = db.collection("wishlists");
+    // const ratingCollection = db.collection("bookRatings");
+
+
+    //  usersApi
     app.post('/users', async (req, res) => {
       const newUser = req.body;
-       newUser.create_date = new Date();
-        newUser.last_loggedIn = new Date();
-         newUser.role = "customer";
+      newUser.create_date = new Date();
+      newUser.last_loggedIn = new Date();
+      newUser.role = "customer";
       const query = { email: newUser.email };
-    
+
       const existinguser = await userscollection.findOne(query);
       if (existinguser) {
         const updateUser = await userscollection.updateOne(query, {
           $set: { last_loggedIn: new Date() },
         });
-               return res.send(updateUser);
+        return res.send(updateUser);
       }
       else {
         const result = await userscollection.insertOne(newUser);
         res.send(result);
       }
-     });
+    });
 
-      //User Role 
+    //User Role 
     app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
       const email = req.body.email;
       const query = { email: email };
@@ -72,23 +76,23 @@ async function run() {
       res.send(result);
     });
 
-//latest Books
+    //latest Books
 
-app.get('/recentBooks',async(req,res)=>{
- 
-  const publish = "published";
+    app.get('/recentBooks', async (req, res) => {
+
+      const publish = "published";
       const result = await bookscollection
         .find({ status: publish })
         .sort({ create_date: -1 })
         .limit(6)
         .toArray();
       res.send(result);;
-})
+    })
 
-//  all books data get**
+    //  all books data get**
 
-app.get('/Books', async (req, res) => {
-      const { bookName} = req.query
+    app.get('/Books', async (req, res) => {
+      const { bookName } = req.query
       let query = {}
       if (bookName) {
         query.bookName = {
@@ -100,9 +104,9 @@ app.get('/Books', async (req, res) => {
       const result = await cursor.toArray();
       res.send(result)
     });
-// search & sort
+    // all books search & sort
     app.get("/Books", async (req, res) => {
-     const publish = "published";
+      const publish = "published";
       const search = req.query.search || "";
       const sort = req.query.sort || "";
 
@@ -113,7 +117,7 @@ app.get('/Books', async (req, res) => {
       if (search) {
         filter.bookTitle = { $regex: search, $options: "i" };
       }
-//sort
+      //sort
       let sortOption = {};
       if (sort === "low-high") {
         sortOption = { price: 1 };
@@ -122,21 +126,30 @@ app.get('/Books', async (req, res) => {
       } else {
         sortOption = { create_date: -1 };
       }
-      const result = await bookCollection
+      const result = await bookscollection
         .find(filter)
         .sort(sortOption)
         .toArray();
 
       res.send(result);
     });
-
+    //manage-book get api(admin)
     app.get("/mange-books", verifyJWT, verifyADMIN, async (req, res) => {
       const result = await bookscollection
         .find()
         .sort({ create_date: -1 })
         .toArray();
-      res.send(result); 
-});
+      res.send(result);
+    });
+    //manage-book get api(Librarian)
+    app.get("/my-books/:email", verifyJWT, verifyLibrarian, async (req, res) => {
+      const email = req.params.email;
+      const result = await bookscollection
+        .find({ authorEmail: email })
+        .toArray();
+      res.send(result);
+    }
+    );
 
     //  get single data
 
@@ -146,97 +159,80 @@ app.get('/Books', async (req, res) => {
       const result = await bookscollection.findOne(query)
       res.send(result)
     });
-      
+
     // delete**
 
-     app.delete('/Books/:id', async (req, res) => {
+    app.delete('/Books/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
       const result = await bookscollection.deleteOne(query);
       res.send(result)
-    })
-
-        // data post**
-
- app.post('/Books', async (req, res) => {
-      const newbookData = req.body;
-      const { bookName, image,
-        rating,
-        email,
-        author,
-        review,
-        publisher,
-        totalPages,
-        yearOfPublishing,
-       category,tags,price
-       } = newbookData
-      
-      const created_at = new Date()
-      const newbook = {
-       bookName, image,
-        rating,
-        email,
-        author,
-         review,
-        publisher,
-        totalPages,
-        yearOfPublishing,
-       category,tags,price,
-        created_at
-      }
-      const result = await bookscollection.insertOne(newbook);
+    });
+    //update book api
+    app.get("/update-book/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await bookscollection.findOne(query);
       res.send(result);
     });
 
-     // edit data**
+    // data post**
+
+    app.post('/Books', verifyJWT, verifyLibrarian, async (req, res) => {
+      const newbook = req.body;
+        const result = await bookscollection.insertOne(newbook);
+      res.send(result);
+    });
+
+    // edit data**
     app.patch('/Books/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
-    const updatedbook = req.body; 
+      try {
+        const id = req.params.id;
+        const updatedbook = req.body;
 
-    const query = { _id: new ObjectId(id) };
+        const query = { _id: new ObjectId(id) };
 
-    const update = {
-      $set: {
-        ...(updatedbook. bookName && {  bookName: updatedbook. bookName }),
-        ...(updatedbook.category && { category: updatedbook.category }),
-        ...(updatedbook.rating && { rating: updatedbook.rating }),
-        ...(updatedbook.price && { price: updatedbook.price }),
-        updated_at: new Date(),
-      },
-    };
- const result = await bookscollection.updateOne(query, update);
-    res.send(result);
-  } catch (error) {
-    console.error('Error updating book:', error);
-    res.status(500).send({ error: 'Failed to update book' });
-  }
-});
+        const update = {
+          $set: {
+            ...(updatedbook.bookName && { bookName: updatedbook.bookName }),
+            ...(updatedbook.category && { category: updatedbook.category }),
+            ...(updatedbook.rating && { rating: updatedbook.rating }),
+            ...(updatedbook.price && { price: updatedbook.price }),
+            updated_at: new Date(),
+          },
+        };
+        const result = await bookscollection.updateOne(query, update);
+        res.send(result);
+      } catch (error) {
+        console.error('Error updating book:', error);
+        res.status(500).send({ error: 'Failed to update book' });
+      }
+    });
 
 
 
     // orders api**
-app.get('/orders',async(req,res)=>{
- try{
-   const query={}
- const { email } = req.query;
-   if (email) {
-        query.userEmail = email;
+    app.get('/orders', async (req, res) => {
+      try {
+        const query = {}
+        const { email } = req.query;
+        if (email) {
+          query.userEmail = email;
+        }
+        const options = { sort: { createdAt: -1 } };
+
+        const cursor = ordersCollection.find(query, options)
+        const result = await cursor.toArray();
+        res.send(result);
       }
-      const options = { sort: { createdAt: -1 } };
+      catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).send({ message: "Failed to fetch orders" });
+      }
 
-  const cursor=ordersCollection.find(query,options)
-  const result=await cursor.toArray();
-  res.send(result);
- }
- catch (error) {
-    console.error("Error fetching orders:", error);
-    res.status(500).send({ message: "Failed to fetch orders" });
-  }
+    })
 
-})
-
- // singleorders data get**
+    // singleorders data get**
 
     app.get('/orders/:id', async (req, res) => {
       const id = req.params.id;
@@ -245,44 +241,44 @@ app.get('/orders',async(req,res)=>{
       res.send(result);
     })
 
-// orders post api**
-   app.post("/orders", async (req, res) => {
-  const orderData = req.body;
+    // orders post api**
+    app.post("/orders", async (req, res) => {
+      const orderData = req.body;
 
-  orderData.createdAt = new Date();
+      orderData.createdAt = new Date();
 
-  const result = await ordersCollection.insertOne(orderData);
-  res.send(result);
-});
-
-
-//delate orders
-app.delete('/orders/:id', async (req, res) => {
-  const id = req.params.id;
-  const query = { _id: new ObjectId(id) }
-  const result = await ordersCollection.deleteOne(query) ;
-  res.send(result);
-});
-
-// patch orders
-app.patch('/orders/:id', async (req, res) => {
-  const id = req.params.id;
-  const { status, paymentStatus } = req.body;
-  const result = await ordersCollection.updateOne(
-    { _id: new ObjectId(id) },
-    { $set: { status, paymentStatus } }
-  );
-  res.send(result);
-});
+      const result = await ordersCollection.insertOne(orderData);
+      res.send(result);
+    });
 
 
-      
+    //delate orders
+    app.delete('/orders/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await ordersCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    // patch orders
+    app.patch('/orders/:id', async (req, res) => {
+      const id = req.params.id;
+      const { status, paymentStatus } = req.body;
+      const result = await ordersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status, paymentStatus } }
+      );
+      res.send(result);
+    });
+
+
+
 
 
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
-    
+
   }
 }
 run().catch(console.dir);
