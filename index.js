@@ -8,8 +8,12 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 //moddleware
-app.use(cors());
+
 app.use(express.json())
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true
+}));
 
 const uri = `mongodb+srv://${process.env.DB_user}:${process.env.DB_pass}@cluster0.nlnjuiz.mongodb.net/?appName=Cluster0`;
 
@@ -91,48 +95,44 @@ async function run() {
 
     //  all books data get**
 
-    app.get('/books', async (req, res) => {
-      const { bookName } = req.query
-      let query = {}
-      if (bookName) {
-        query.bookName = {
-          $regex: bookName,
-          $options: 'i'
-        };
-      }
-      const cursor = bookscollection.find(query).sort({ created_at: -1 })
-      const result = await cursor.toArray();
-      res.send(result)
-    });
+    // app.get('/books', async (req, res) => {
+    //   const { bookName } = req.query
+    //   let query = {}
+    //   if (bookName) {
+    //     query.bookName = {
+    //       $regex: bookName,
+    //       $options: 'i'
+    //     };
+    //   }
+    //   const cursor = bookscollection.find(query).sort({ created_at: -1 })
+    //   const result = await cursor.toArray();
+    //   res.send(result)
+    // });
     // all books search & sort
     app.get("/books", async (req, res) => {
-      const publish = "published";
-      const search = req.query.search || "";
-      const sort = req.query.sort || "";
+  const { search = "", sort = "" } = req.query;
 
-      let filter = {
-        status: publish,
-      };
+  let filter = { status: "published" };
 
-      if (search) {
-        filter.bookTitle = { $regex: search, $options: "i" };
-      }
-      //sort
-      let sortOption = {};
-      if (sort === "low-high") {
-        sortOption = { price: 1 };
-      } else if (sort === "high-low") {
-        sortOption = { price: -1 };
-      } else {
-        sortOption = { create_date: -1 };
-      }
-      const result = await bookscollection
-        .find(filter)
-        .sort(sortOption)
-        .toArray();
+  if (search) {
+    filter.bookName = { $regex: search, $options: "i" };
+  }
 
-      res.send(result);
-    });
+  let sortOption = {};
+  if (sort === "low-high") sortOption = { price: 1 };
+  else if (sort === "high-low") sortOption = { price: -1 };
+  else sortOption = { create_date: -1 };
+
+  const result = await bookscollection.find(filter).sort(sortOption).toArray();
+  res.send(result);
+});
+//  get user-role api**
+app.get("/user/role", verifyJWT, async (req, res) => {
+  const email = req.query.email;
+  const user = await userscollection.findOne({ email });
+  res.send({ role: user?.role || "customer" });
+});
+
     //manage-book get api(admin)
     app.get("/manage-books", verifyJWT, verifyADMIN, async (req, res) => {
       const result = await bookscollection
@@ -186,7 +186,7 @@ async function run() {
     app.post('/books', verifyJWT, verifyLibrarian, async (req, res) => {
       const newBook = req.body;
        newBook.create_date = new Date();
-        const result = await bookscollection.insertOne(newbook);
+        const result = await bookscollection.insertOne(newBook);
       res.send(result);
     });
 
