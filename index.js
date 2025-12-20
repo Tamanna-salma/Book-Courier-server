@@ -7,13 +7,37 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 3000;
 
-//moddleware
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./book-courier-firebase-adminsdk.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 
 app.use(express.json())
 app.use(cors({
   origin: "http://localhost:5173",
   credentials: true
 }));
+
+// token
+
+const verifyJWT = async (req, res, next) => {
+  const token = req?.headers?.authorization?.split(" ")[1];
+
+  if (!token) return res.status(401).send({ message: "Unauthorized Access!" });
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    req.tokenEmail = decoded.email;
+
+    next();
+  } catch (error) {
+    console.log(err);
+    return res.status(401).send({ message: "Unauthorized Access!", error });
+  }
+};
 
 const uri = `mongodb+srv://${process.env.DB_user}:${process.env.DB_pass}@cluster0.nlnjuiz.mongodb.net/?appName=Cluster0`;
 
@@ -25,6 +49,7 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+
 
 
 app.get('/', (req, res) => {
