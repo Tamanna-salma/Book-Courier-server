@@ -81,9 +81,9 @@ async function run() {
     const userscollection = db.collection('users');
     const bookscollection = db.collection('Books');
     const ordersCollection = db.collection('orders');
-    // const paymentCollection = db.collection("payments");
-    // const wishlistCollection = db.collection("wishlists");
-    // const ratingCollection = db.collection("bookRatings");
+    const paymentCollection = db.collection("payments");
+    const wishlistCollection = db.collection("wishlists");
+    const ratingCollection = db.collection("bookRatings");
 
 app.get('/', (req, res) => {
   res.send('bookcourier server is running')
@@ -136,6 +136,17 @@ app.get('/', (req, res) => {
       }
     });
 
+        // user profile update
+    app.patch("/users/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const updateUser = req.body;
+      const updateProfile = { name: updateUser.name, image: updateUser.image };
+      const updateDoc = { $set: updateProfile };
+      const result = await userscollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
+
     //User Role Update
     app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
       const email = req.body.email;
@@ -150,19 +161,6 @@ app.get('/', (req, res) => {
       res.send(result);
     });
 
-     //User Role Update
-    app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
-      const email = req.body.email;
-      const query = { email: email };
-      const roleUpdate = req.body;
-      const updateDoc = {
-        $set: {
-          role: roleUpdate.role,
-        },
-      };
-      const result = await userscollection.updateOne(query, updateDoc);
-      res.send(result);
-    });
     //latest Books
 
     app.get('/recentBooks', async (req, res) => {
@@ -191,6 +189,7 @@ app.get('/', (req, res) => {
     //   const result = await cursor.toArray();
     //   res.send(result)
     // });
+    
     // all books search & sort
     app.get("/books", async (req, res) => {
   const { search = "", sort = "" } = req.query;
@@ -210,11 +209,26 @@ app.get('/', (req, res) => {
   res.send(result);
 });
 //  get user-role api**
-app.get("/user/role", verifyJWT, async (req, res) => {
-  const email = req.query.email;
-  const user = await userscollection.findOne({ email });
-  res.send({ role: user?.role || "customer" });
-});
+// app.get("/user/role", verifyJWT, async (req, res) => {
+//   const email = req.query.email;
+//   const user = await userscollection.findOne({ email });
+//   res.send({ role: user?.role || "customer" });
+// });
+//     app.get("/user/role", async (req, res) => {
+//       const email = req.query.email;
+//       if (!email) return res.status(400).send({ error: "Email is required" });
+
+//       const user = await userscollection.findOne({ email });
+//       if (!user) return res.status(404).send({ error: "User not found" });
+
+//       res.send({ role: user.role });
+//     });
+
+//     app.get("/users/:email", verifyJWT, async (req, res) => {
+//       const email = req.params.email;
+//       const result = await userscollection.findOne({ email });
+//       res.send(result);
+//     });
 
     //manage-book get api(admin)
     app.get("/manage-books", verifyJWT, verifyADMIN, async (req, res) => {
@@ -297,42 +311,36 @@ app.get("/user/role", verifyJWT, async (req, res) => {
     });
 
     // orders api**
-    app.get('/orders', async (req, res) => {
-      try {
-        const query = {}
-        const { email } = req.query;
-        if (email) {
-          query.userEmail = email;
-        }
-        const options = { sort: { createdAt: -1 } };
-
-        const cursor = ordersCollection.find(query, options)
-        const result = await cursor.toArray();
+      app.get(
+      "/orders/:email/payments",
+      verifyJWT,
+      verifyLibrarian,
+      async (req, res) => {
+        const email = req.params.email;
+        const result = await ordersCollection
+          .find({ authorEmail: email, paymentStatus: "paid" })
+          .toArray();
         res.send(result);
       }
-      catch (error) {
-        console.error("Error fetching orders:", error);
-        res.status(500).send({ message: "Failed to fetch orders" });
-      }
-
-    })
+    );
 
     // singleorders data get**
 
-    app.get('/orders/:id', async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) }
-      const result = await ordersCollection.findOne(query);
+  app.get("/orders/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      const result = await ordersCollection
+        .find({ customerEmail: email })
+        .toArray();
       res.send(result);
-    })
+    });
 
     // orders post api**
-    app.post("/orders", async (req, res) => {
-      const orderData = req.body;
-
-      orderData.createdAt = new Date();
-
-      const result = await ordersCollection.insertOne(orderData);
+        app.post("/orders", verifyJWT, async (req, res) => {
+      const newOrder = req.body;
+      newOrder.status = "pending";
+      newOrder.paymentStatus = "unpaid";
+      newOrder.order_date = new Date();
+      const result = await ordersCollection.insertOne(newOrder);
       res.send(result);
     });
 
@@ -346,17 +354,34 @@ app.get("/user/role", verifyJWT, async (req, res) => {
     });
 
     // patch orders
-    app.patch('/orders/:id', async (req, res) => {
+     app.patch("/order/:id", verifyJWT, verifyLibrarian, async (req, res) => {
       const id = req.params.id;
-      const { status, paymentStatus } = req.body;
-      const result = await ordersCollection.updateOne(
-        { _id: new ObjectId(id) },
-        { $set: { status, paymentStatus } }
-      );
+      const query = { _id: new ObjectId(id) };
+      const statusUpdate = req.body;
+
+      const updateDoc = {
+        $set: { status: statusUpdate.status },
+      };
+
+      await paymentCollection.updateOne({ orderId: id }, updateDoc);
+
+      const result = await ordersCollection.updateOne(query, updateDoc);
       res.send(result);
     });
+// orders cancelled
+ app.patch("/order-cancelled/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
 
+      const updateDoc = { $set: { status: req.body.status } };
 
+      try {
+        const result = await ordersCollection.updateOne(query, updateDoc);
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Internal Server Error", error: err });
+      }
+    });
 
 
 
