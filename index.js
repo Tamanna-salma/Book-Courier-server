@@ -413,8 +413,74 @@ app.get('/', (req, res) => {
       res.send({ url: session.url })
 
     })
+    
+ app.patch("/payment-success", verifyJWT, async (req, res) => {
+      const sessionId = req.query.session_id;
 
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const orderId = session?.metadata?.orderId;
+      const orderQuery = { _id: new ObjectId(orderId) };
 
+      const books = await ordersCollection.findOne(orderQuery);
+
+      // Already paid?
+      const existingPayment = await paymentCollection.findOne({
+        transationId: session.payment_intent,
+      });
+
+      if (existingPayment) {
+        return res.send({
+          message: "Payment already processed",
+          transationId: existingPayment.transationId,
+        });
+      }
+
+      if (session.payment_status === "paid" && books) {
+        const orderInfo = {
+          orderId: orderId,
+          transationId: session.payment_intent,
+          bookName: books.name,
+          authorName: books.authorName,
+          authorEmail: books.authorEmail,
+          customer_email: session.customer_email,
+          customer_name: books.customerName,
+          payment_date: new Date(),
+          status: books.status,
+          price: session.amount_total / 100,
+        };
+
+        const result = await paymentCollection.insertOne(orderInfo);
+
+        await ordersCollection.updateOne(orderQuery, {
+          $set: { paymentStatus: session.payment_status },
+          $inc: { quantity: -1 },
+        });
+
+        return res.send({
+        
+          transationId: session.payment_intent,
+          orderId: result.insertedId,
+        });
+      }
+
+      return res.send({ message: "Payment not completed" });
+    });
+
+    // payment
+ app.get("/payments/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      const result = await paymentCollection
+        .find({ customer_email: email })
+        .sort({ payment_date: -1 })
+        .toArray();
+      res.send(result);
+    });
+
+    app.get("/paymets-all", verifyJWT, verifyADMIN, async (req, res) => {
+      const result = await paymentCollection.find().toArray();
+      res.send(result);
+    });
+    
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
