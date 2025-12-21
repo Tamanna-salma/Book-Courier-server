@@ -383,6 +383,36 @@ app.get('/', (req, res) => {
       }
     });
 
+    // stripe payment relatet Apis
+    app.post('/create-checkout-session', async (req, res) => {
+      const paymentinfo = req.body;
+      const amount = parseInt(paymentinfo.cost) * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              unit_amount: amount,
+              product_data: {
+                name: ` ${paymentinfo.name}`
+              }
+            },
+            quantity: 1,
+          },
+        ],
+        customer_email: paymentinfo.customerEmail,
+        mode: 'payment',
+        metadata: {
+          orderId: paymentinfo._Id
+
+        },
+       
+        success_url: `${process.env.SIDE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SIDE_DOMAIN}/dashboard/my-orders`,
+      })
+      res.send({ url: session.url })
+
+    })
 
 
     await client.db("admin").command({ ping: 1 });
