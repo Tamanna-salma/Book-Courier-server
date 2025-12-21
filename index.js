@@ -480,7 +480,41 @@ app.get('/', (req, res) => {
       const result = await paymentCollection.find().toArray();
       res.send(result);
     });
+
+    // wishlist releted api //
+    app.get("/wish-list", verifyJWT, async (req, res) => {
+      const email = req.tokenEmail;
+      const result = await wishlistCollection
+        .find({ userEmail: email })
+        .sort({ wishList_date: -1 })
+        .toArray();
+      res.send(result);
+    });
+    // wishlist post api 
+    app.post("/wish-list", async (req, res) => {
+      const newWishList = req.body;
+      const existingWishList = await wishlistCollection.findOne({
+        userEmail: newWishList.userEmail,
+        bookName: newWishList.bookName,
+      });
+      if (existingWishList) {
+        return res.send({ message: "already_exists" });
+      }
+      newWishList.wishList_date = new Date();
+      const result = await wishlistCollection.insertOne(newWishList);
+      res.send(result);
+    });
     
+// wishlist delete api 
+    app.delete("/wish-list/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await wishlistCollection.deleteOne(query);
+      res.send(result);
+    });
+
+
+
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
