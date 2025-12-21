@@ -8,21 +8,14 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const admin = require("firebase-admin");
-
-const serviceAccount = require("./book-courier-firebase-adminsdk.json");
-
+const decoded = Buffer.from(
+  process.env.FIRE_BASE_SECURET_KEY,
+  "base64"
+).toString("utf-8");
+const serviceAccount = JSON.parse(decoded);
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
-
-
-app.use(express.json())
-app.use(cors({
-  origin: "http://localhost:5173",
-  credentials: true
-}));
-
-// token
 
 const verifyJWT = async (req, res, next) => {
   const token = req?.headers?.authorization?.split(" ")[1];
@@ -39,9 +32,18 @@ const verifyJWT = async (req, res, next) => {
   }
 };
 
-const uri = `mongodb+srv://${process.env.DB_user}:${process.env.DB_pass}@cluster0.nlnjuiz.mongodb.net/?appName=Cluster0`;
+// middleware
+app.use(express.json())
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true,
+   optionSuccessStatus: 200,
+    allowedHeaders: ["Content-Type", "Authorization"],
+}));
 
 // mongodb**
+const uri = `mongodb+srv://${process.env.DB_user}:${process.env.DB_pass}@cluster0.nlnjuiz.mongodb.net/?appName=Cluster0`;
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -49,13 +51,27 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+ // Role middlewre
+    const verifyADMIN = async (req, res, next) => {
+      const email = req.tokenEmail;
+      const users = await userCollection.findOne({ email });
+      if (users?.role !== "admin")
+        return res
+          .status(403)
+          .seler({ message: "Admin Only Actions", role: users?.role });
+      next();
+    };
 
+    const verifyLibrarian = async (req, res, next) => {
+      const email = req.tokenEmail;
+      const users = await userCollection.findOne({ email });
+      if (users?.role !== "Librarian")
+        return res
+          .status(403)
+          .seler({ message: "Seller Only Actions", role: users?.role });
+      next();
+    };
 
-
-app.get('/', (req, res) => {
-  res.send('bookcourier server is running')
-
-})
 
 async function run() {
   try {
@@ -69,8 +85,37 @@ async function run() {
     // const wishlistCollection = db.collection("wishlists");
     // const ratingCollection = db.collection("bookRatings");
 
+app.get('/', (req, res) => {
+  res.send('bookcourier server is running')
 
+})
     //  usersApi
+
+ app.get("/all-users/:email", verifyJWT, verifyADMIN, async (req, res) => {
+      const adminEmail = req.params.email;
+      const result = await userscollection
+        .find({ email: { $ne: adminEmail } })
+        .toArray();
+      res.send(result);
+    });
+
+      // GeT  user role
+    app.get("/user/role", async (req, res) => {
+      const email = req.query.email;
+      if (!email) return res.status(400).send({ error: "Email is required" });
+
+      const user = await userscollection.findOne({ email });
+      if (!user) return res.status(404).send({ error: "User not found" });
+
+      res.send({ role: user.role });
+    });
+
+    app.get("/users/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      const result = await userscollection.findOne({ email });
+      res.send(result);
+    });
+//User Role post
     app.post('/users', async (req, res) => {
       const newUser = req.body;
       newUser.create_date = new Date();
@@ -91,20 +136,33 @@ async function run() {
       }
     });
 
-    //User Role 
+    //User Role Update
     app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
       const email = req.body.email;
       const query = { email: email };
       const roleUpdate = req.body;
-      const updateinfo = {
+      const updateDoc = {
         $set: {
           role: roleUpdate.role,
         },
       };
-      const result = await userscollection.updateOne(query, updateinfo);
+      const result = await userscollection.updateOne(query, updateDoc);
       res.send(result);
     });
 
+     //User Role Update
+    app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
+      const email = req.body.email;
+      const query = { email: email };
+      const roleUpdate = req.body;
+      const updateDoc = {
+        $set: {
+          role: roleUpdate.role,
+        },
+      };
+      const result = await userscollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
     //latest Books
 
     app.get('/recentBooks', async (req, res) => {
