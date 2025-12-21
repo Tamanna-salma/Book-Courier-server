@@ -512,7 +512,18 @@ app.get('/', (req, res) => {
       const result = await wishlistCollection.deleteOne(query);
       res.send(result);
     });
+      //  rating releted api**
 
+        app.get("/review/:bookId", verifyJWT, async (req, res) => {
+      const bookId = req.params.bookId;
+      const email = req.tokenEmail;
+      const query = { email: email, bookId: bookId };
+      const reviews = await ratingCollection
+        .find(query)
+        .sort({ date: -1 })
+        .toArray();
+      res.send(reviews);
+    });
 
 
     await client.db("admin").command({ ping: 1 });
