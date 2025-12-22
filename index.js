@@ -1,33 +1,46 @@
 require('dotenv').config()
 const express = require('express');
 const cors = require('cors');
-
+const app = express();
 //  mongodb***
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const app = express();
-const port = process.env.PORT || 3000;
-
+const stripe = require('stripe')(process.env.Stripe_Secret);
+const port = process.env.PORT || 3000
+// firabase admin**
 const admin = require("firebase-admin");
-const decoded = Buffer.from(
-  process.env.FIRE_BASE_SECURET_KEY,
-  "base64"
-).toString("utf-8");
-const serviceAccount = JSON.parse(decoded);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
 
+if (!process.env.FIRE_BASE_SECURET_KEY) {
+  
+  admin.initializeApp();
+} else {
+  try {
+    const decoded = Buffer.from(
+      process.env.FIRE_BASE_SECURET_KEY,
+      "base64"
+    ).toString("utf-8");
+    const serviceAccount = JSON.parse(decoded);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  } catch (error) {
+    console.error("Firebase initialization error:", error);
+    admin.initializeApp(); 
+  }
+}
+
+// JWT Verification Middleware
 const verifyJWT = async (req, res, next) => {
   const token = req?.headers?.authorization?.split(" ")[1];
 
   if (!token) return res.status(401).send({ message: "Unauthorized Access!" });
+  
   try {
     const decoded = await admin.auth().verifyIdToken(token);
     req.tokenEmail = decoded.email;
-
+   
     next();
   } catch (error) {
-    console.log(err);
+    console.log("JWT Error:", error);
     return res.status(401).send({ message: "Unauthorized Access!", error });
   }
 };
@@ -35,7 +48,7 @@ const verifyJWT = async (req, res, next) => {
 // middleware
 app.use(express.json())
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: process.env.SIDE_DOMAIN || "http://localhost:5173",
   credentials: true,
   optionSuccessStatus: 200,
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -51,25 +64,42 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+
 // Role middlewre
 const verifyADMIN = async (req, res, next) => {
-  const email = req.tokenEmail;
-  const users = await userCollection.findOne({ email });
-  if (users?.role !== "admin")
-    return res
-      .status(403)
-      .seler({ message: "Admin Only Actions", role: users?.role });
-  next();
+  try {
+    const email = req.tokenEmail;
+    const user = await userscollection.findOne({ email: email });
+    
+    if (!user || user?.role !== "admin") {
+      return res.status(403).send({ 
+        message: "Admin Only Actions", 
+        role: user?.role || "none" 
+      });
+    }
+    next();
+  } catch (error) {
+    console.error("Admin verification error:", error);
+    return res.status(500).send({ message: "Server error" });
+  }
 };
 
 const verifyLibrarian = async (req, res, next) => {
-  const email = req.tokenEmail;
-  const users = await userCollection.findOne({ email });
-  if (users?.role !== "Librarian")
-    return res
-      .status(403)
-      .seler({ message: "Seller Only Actions", role: users?.role });
-  next();
+  try {
+    const email = req.tokenEmail;
+    const user = await userscollection.findOne({ email: email });
+    
+    if (!user || (user?.role !== "librarian" && user?.role !== "admin")) {
+      return res.status(403).send({ 
+        message: "Librarian Only Actions", 
+        role: user?.role || "none" 
+      });
+    }
+    next();
+  } catch (error) {
+    console.error("Librarian verification error:", error);
+    return res.status(500).send({ message: "Server error" });
+  }
 };
 
 
@@ -89,147 +119,149 @@ async function run() {
       res.send('bookcourier server is running')
 
     })
+
+
     //  usersApi
 
-    app.get("/all-users/:email", verifyJWT, verifyADMIN, async (req, res) => {
-      const adminEmail = req.params.email;
-      const result = await userscollection
-        .find({ email: { $ne: adminEmail } })
-        .toArray();
-      res.send(result);
-    });
-
-    // GeT  user role
-    app.get("/user/role", async (req, res) => {
-      const email = req.query.email;
-      if (!email) return res.status(400).send({ error: "Email is required" });
-
-      const user = await userscollection.findOne({ email });
-      if (!user) return res.status(404).send({ error: "User not found" });
-
-      res.send({ role: user.role });
-    });
-
-    app.get("/users/:email", verifyJWT, async (req, res) => {
-      const email = req.params.email;
-      const result = await userscollection.findOne({ email });
-      res.send(result);
-    });
-    //User Role post
-    app.post('/users', async (req, res) => {
-      const newUser = req.body;
-      newUser.create_date = new Date();
-      newUser.last_loggedIn = new Date();
-      newUser.role = "customer";
-      const query = { email: newUser.email };
-
-      const existinguser = await userscollection.findOne(query);
-      if (existinguser) {
-        const updateUser = await userscollection.updateOne(query, {
-          $set: { last_loggedIn: new Date() },
-        });
-        return res.send(updateUser);
-      }
-      else {
-        const result = await userscollection.insertOne(newUser);
+   app.get("/all-users/:email", verifyJWT, verifyADMIN, async (req, res) => {
+      try {
+        const adminEmail = req.params.email;
+        const result = await userscollection
+          .find({ email: { $ne: adminEmail } })
+          .toArray();
         res.send(result);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        res.status(500).send({ error: "Failed to fetch users" });
       }
     });
+
+     app.get("/users/:email", verifyJWT, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const result = await  userscollection .findOne({ email: email });
+        res.send(result || {});
+      } catch (error) {
+        console.error("Error fetching user:", error);
+        res.status(500).send({ error: "Failed to fetch user" });
+      }
+    });
+
+   //  get user-role api**
+   app.get("/user/role", async (req, res) => {
+  const email = req.query.email;
+  if (!email ) {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  const user = await userscollection.findOne({ email });
+  res.send({ role: user?.role || "customer" });
+});
+
+
+    //User Role post
+ app.post('/users',verifyJWT, async (req, res) => {
+  try {
+    const newUser = req.body;
+    newUser.create_date = new Date();
+    newUser.last_loggedIn = new Date();
+    newUser.role = "customer";
+    
+    const query = { email: newUser.email };
+    const existinguser = await userscollection.findOne(query);
+    
+    if (existinguser) {
+      const updateUser = await userscollection.updateOne(query, {
+        $set: { last_loggedIn: new Date() },
+      });
+      return res.send(updateUser);
+    } else {
+      const result = await userscollection.insertOne(newUser);
+      res.send(result);
+    }
+  } catch (error) {
+    console.error("Error creating user:", error);
+    res.status(500).send({ error: "Failed to create user" });
+  }
+});
 
     // user profile update
-    app.patch("/users/:id", verifyJWT, async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const updateUser = req.body;
-      const updateProfile = { name: updateUser.name, image: updateUser.image };
-      const updateDoc = { $set: updateProfile };
-      const result = await userscollection.updateOne(query, updateDoc);
-      res.send(result);
+     app.patch("/users/:id/role", verifyJWT,verifyADMIN, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const updateUser = req.body;
+        const updateProfile = { 
+          name: updateUser.name, 
+          image: updateUser.image 
+        };
+        const updateDoc = { $set: updateProfile };
+        
+        const result = await userscollection.updateOne(query, updateDoc);
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating profile:", error);
+        res.status(500).send({ error: "Failed to update profile" });
+      }
     });
 
     //User Role Update
-    app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
-      const email = req.body.email;
-      const query = { email: email };
-      const roleUpdate = req.body;
-      const updateDoc = {
-        $set: {
-          role: roleUpdate.role,
-        },
-      };
-      const result = await userscollection.updateOne(query, updateDoc);
-      res.send(result);
+     app.patch("/user-role", verifyJWT, verifyADMIN, async (req, res) => {
+      try {
+        const email = req.body.email;
+        const query = { email: email };
+        const roleUpdate = req.body;
+        
+        const updateDoc = {
+          $set: { role: roleUpdate.role }
+        };
+        
+        const result = await userscollection.updateOne(query, updateDoc);
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating role:", error);
+        res.status(500).send({ error: "Failed to update role" });
+      }
     });
 
     //latest Books
 
-    app.get('/recentBooks', async (req, res) => {
-
-      const publish = "published";
-      const result = await bookscollection
-        .find({ status: publish })
-        .sort({ create_date: -1 })
-        .limit(6)
-        .toArray();
-      res.send(result);;
-    })
-
-    //  all books data get**
-
-    // app.get('/books', async (req, res) => {
-    //   const { bookName } = req.query
-    //   let query = {}
-    //   if (bookName) {
-    //     query.bookName = {
-    //       $regex: bookName,
-    //       $options: 'i'
-    //     };
-    //   }
-    //   const cursor = bookscollection.find(query).sort({ created_at: -1 })
-    //   const result = await cursor.toArray();
-    //   res.send(result)
-    // });
+     app.get('/recentBooks', async (req, res) => {
+      try {
+        const publish = "published";
+        const result = await bookscollection
+          .find({ status: publish })
+          .sort({ create_date: -1 })
+          .limit(6)
+          .toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching recent books:", error);
+        res.status(500).send({ error: "Failed to fetch recent books" });
+      }
+    });
 
     // all books search & sort
-    app.get("/books", async (req, res) => {
-      const { search = "", sort = "" } = req.query;
+     app.get("/books", async (req, res) => {
+      try {
+        const { search = "", sort = "" } = req.query;
+        let filter = { status: "published" };
 
-      let filter = { status: "published" };
+        if (search) {
+          filter.bookName = { $regex: search, $options: "i" };
+        }
 
-      if (search) {
-        filter.bookName = { $regex: search, $options: "i" };
+        let sortOption = {};
+        if (sort === "low-high") sortOption = { price: 1 };
+        else if (sort === "high-low") sortOption = { price: -1 };
+        else sortOption = { create_date: -1 };
+
+        const result = await bookscollection.find(filter).sort(sortOption).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching books:", error);
+        res.status(500).send({ error: "Failed to fetch books" });
       }
-
-      let sortOption = {};
-      if (sort === "low-high") sortOption = { price: 1 };
-      else if (sort === "high-low") sortOption = { price: -1 };
-      else sortOption = { create_date: -1 };
-
-      const result = await bookscollection.find(filter).sort(sortOption).toArray();
-      res.send(result);
     });
-    //  get user-role api**
-    // app.get("/user/role", verifyJWT, async (req, res) => {
-    //   const email = req.query.email;
-    //   const user = await userscollection.findOne({ email });
-    //   res.send({ role: user?.role || "customer" });
-    // });
-    //     app.get("/user/role", async (req, res) => {
-    //       const email = req.query.email;
-    //       if (!email) return res.status(400).send({ error: "Email is required" });
-
-    //       const user = await userscollection.findOne({ email });
-    //       if (!user) return res.status(404).send({ error: "User not found" });
-
-    //       res.send({ role: user.role });
-    //     });
-
-    //     app.get("/users/:email", verifyJWT, async (req, res) => {
-    //       const email = req.params.email;
-    //       const result = await userscollection.findOne({ email });
-    //       res.send(result);
-    //     });
-
     //manage-book get api(admin)
     app.get("/manage-books", verifyJWT, verifyADMIN, async (req, res) => {
       const result = await bookscollection
@@ -238,6 +270,7 @@ async function run() {
         .toArray();
       res.send(result);
     });
+
     //my-book get api(Librarian)
     app.get("/my-books/:email", verifyJWT, verifyLibrarian, async (req, res) => {
       const email = req.params.email;
@@ -270,6 +303,7 @@ async function run() {
       const result = await bookscollection.deleteOne(query);
       res.send(result)
     });
+
     //update book api
     app.get("/update-book/:id", async (req, res) => {
       const id = req.params.id;
@@ -281,11 +315,48 @@ async function run() {
     // data post**
 
     app.post('/books', verifyJWT, verifyLibrarian, async (req, res) => {
-      const newBook = req.body;
-      newBook.create_date = new Date();
-      const result = await bookscollection.insertOne(newBook);
-      res.send(result);
+  try {
+    const newBook = req.body;
+    
+    //  all required fields
+    const bookData = {
+      bookName: newBook.bookName,
+     authorName: newBook.author || newBook.authorName,
+      authorEmail: req.tokenEmail, 
+      publisher: newBook.publisher,
+      publishedYear: parseInt(newBook.publishedYear),
+      pageNumber: parseInt(newBook.pageNumber || newBook.pageNumber),
+      price: parseFloat(newBook.price),
+     stockQuantity: parseInt(newBook.stock || newBook.stockQuantity),
+      category: newBook.category,
+      status: newBook.status || "unpublished",
+      tags: Array.isArray(newBook.tags) ? newBook.tags : 
+            typeof newBook.tags === 'string' ? newBook.tags.split(',').map(t => t.trim()) : [],
+      description: newBook.description,
+      image: newBook.image,
+      create_date: new Date()
+    };
+    
+    // Validate required fields
+    const requiredFields = ['bookName', 'authorName', 'price', 'category'];
+    for (const field of requiredFields) {
+      if (!bookData[field]) {
+        return res.status(400).send({ error: `${field} is required` });
+      }
+    }
+    
+    const result = await bookscollection.insertOne(bookData);
+    res.send({ 
+      success: true, 
+      message: "Book added successfully",
+      insertedId: result.insertedId 
     });
+    
+  } catch (error) {
+    console.error("Error adding book:", error);
+    res.status(500).send({ error: "Failed to add book", details: error.message });
+  }
+});
 
     // edit data**
 
